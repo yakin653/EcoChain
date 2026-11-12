@@ -11,3 +11,8 @@ coverage/
 *.tsbuildinfo
 backend-dev-*.txt
 frontend-dev-*.txt
+backend/uploads/
+ai-service/.venv/
+ai-service/models/*.pkl
+ai-service/models/*.sha256
+ai-service/models/.cache/

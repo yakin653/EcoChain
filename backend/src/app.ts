@@ -8,13 +8,15 @@ import rewardRoutes from "./routes/rewards";
 import assistantRoutes from "./routes/assistant";
 import challengeRoutes from "./routes/challenges";
 import { getChainReadiness } from "./services/chainReadiness";
+import { probeAiHealth } from "./services/aiWasteService";
 import { errorHandler, notFound } from "./middleware/errors";
 const app = express();
 app.use(helmet());
 app.use(cors({ origin: env.frontendOrigin }));
 app.use(express.json({ limit: "1mb" }));
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (_req, res) => {
   const chain = getChainReadiness();
+  const ai = await probeAiHealth();
   res.json({
     status: "ok",
     chainId: env.chainId,
@@ -24,6 +26,15 @@ app.get("/api/health", (_req, res) => {
       registryConfigured: chain.registryConfigured,
       tokenConfigured: chain.tokenConfigured,
       blockers: chain.blockers
+    },
+    ai: {
+      serviceUrl: env.aiServiceUrl,
+      reachable: ai.reachable,
+      modelReady: ai.modelReady,
+      assistiveOnly: true,
+      neverApproves: true,
+      neverMints: true,
+      detail: ai.detail
     }
   });
 });

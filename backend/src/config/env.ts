@@ -22,5 +22,10 @@ export const env = {
   rewardMaxEcoPerDeclaration: process.env.REWARD_MAX_ECO_PER_DECLARATION || "1000",
   rewardMinQuantityMillis: process.env.REWARD_MIN_QUANTITY_MILLIS || "100",
   rewardRatesJson: process.env.REWARD_RATES_JSON || "",
-  reconcileOnStartup: (process.env.RECONCILE_ON_STARTUP || "true").toLowerCase() !== "false"
+  reconcileOnStartup: (process.env.RECONCILE_ON_STARTUP || "true").toLowerCase() !== "false",
+  /** Local Trash Classifier V2 service (no paid API). */
+  aiServiceUrl: (process.env.AI_SERVICE_URL || "http://127.0.0.1:5001").replace(/\/$/, ""),
+  aiTimeoutMs: Number(process.env.AI_TIMEOUT_MS || 60000),
+  aiMaxUploadBytes: Number(process.env.AI_MAX_UPLOAD_BYTES || 5 * 1024 * 1024),
+  uploadsDir: process.env.UPLOADS_DIR || ""
 };
