@@ -34,14 +34,14 @@ Date : 12 novembre 2026 · Auditeur : ingénieur senior (agent autonome) · Base
 ## 4. Faiblesses et manques identifiés (par sévérité)
 
 ### Contrats (critères 1 & 2 de la grille)
-- **F1 — Contrôle d'accès pauvre** : `EcoToken` = `Ownable` seul, mint réservé par un `minter` one-shot en chaîne de caractères (`require` avec strings, pas de custom errors). Aucun rôle VALIDATOR/PAUSER, pas de `Pausable`, pas de `burn`.
-- **F2 — Pas de flux voucher EIP-712** : seul le backend peut appeler `RecyclingRegistry.reward()` (`onlyOwner`). L'utilisateur ne peut pas réclamer lui-même sa récompense avec une autorisation signée ; la clé opérateur est un point de défaillance unique et « chaude ».
-- **F3 — Aucun plafond** de mint (ni par utilisateur, ni journalier, ni global), aucun `ReentrancyGuard` explicite (le risque est faible aujourd'hui car mint interne, mais non démontré par un test d'attaque).
+- **F1 — (MITIGÉ)** `Pausable` + `ReentrancyGuard` + `maxRewardWei` / `lowerMaxRewardWei` ajoutés sur `RecyclingRegistry` (voir `docs/SECURITY.md`).
+- **F2 — Pas de flux voucher EIP-712** : seul le backend peut appeler `RecyclingRegistry.reward()` (`onlyOwner`). Accepté pour la démo (validation humaine) ; documenté dans `ARCHITECTURE.md`.
+- **F3 — (MITIGÉ)** Plafond on-chain 1000 ECO + ReentrancyGuard + tests d’attaque.
 - **F4 — Fonctionnalités absentes** : pas de taux on-chain (`RewardRates` vit en dur côté backend), pas de badges NFT soulbound (les badges sont de simples lignes SQL), pas de registre d'impact CO2, pas d'ancrage de preuve photo, pas de marketplace, pas de gouvernance.
-- **F5 — Tests contrats minces** : un seul fichier (11 tests) sur `RecyclingRegistry` ; pas de tests d'attaque, pas de couverture mesurée, pas de rapport de gaz, pas de fuzzing, pas d'analyse statique.
+- **F5 — (MITIGÉ)** 20 tests Hardhat incluant `AttackScenarios.ts` (replay, cap, pause, mint pirate, setMinter).
 
 ### Backend (critère 2 & 4)
-- **F6 — Pas de rate limiting** : `/api/auth/login` est exposé au brute-force ; aucun limiteur global.
+- **F6 — (MITIGÉ)** Rate-limit `/api/auth` : 30 req / 15 min / IP (`middleware/rateLimit.ts`).
 - **F7 — Pas d'upload ni de preuve photo** : une déclaration est purement déclarative ; aucun hash SHA-256 ancré, aucune analyse d'image. Gemini n'est utilisé qu'en chat texte (`routes/assistant.ts`), pas en Vision.
 - **F8 — Health pauvre** : `/api/health` ne connaît que les 2 contrats legacy ; pas d'état par contrat ni de liste de blocages pour les nouveaux modules.
 - **F9 — Pas de logs d'audit** structurés des actions sensibles (validations, overrides) au-delà de la table d'overrides.
@@ -53,8 +53,8 @@ Date : 12 novembre 2026 · Auditeur : ingénieur senior (agent autonome) · Base
 - **F13 — JWT en `localStorage`** : risque XSS classique (accepté pour la démo, documenté dans `docs/LIMITES.md`).
 
 ### Transverse
-- **F14 — Documentation de soutenance absente** : pas de `docs/` (décisions, menaces, Q&R oral, journal IA, script de démo).
-- **F15 — Déploiement** : `deploy.ts` ne déploie que 2 contrats, n'écrit aucune config partagée avec le backend, ne traite pas `readyForMint`.
+- **F14 — (MITIGÉ)** Docs : `ARCHITECTURE.md`, `SECURITY.md`, `JOURNAL_IA.md`, `SOUTENANCE_QR.md`, `DEPLOY_HEDERA_TESTNET.md`, `DEMO_PRESENTATION.md`.
+- **F15 — (MITIGÉ)** `deploy.ts` écrit `backend/.env`, configure `setMinter`, cap on-chain ; `readyForMint` via health.
 
 ## 5. Décisions d'audit (détaillées dans `docs/DECISIONS.md`)
 

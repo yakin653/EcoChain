@@ -1,6 +1,12 @@
-export type UserRole = "USER" | "ADMIN";
+export type UserRole = "USER" | "ADMIN" | "VALIDATOR";
 
-export type DeclarationStatus = "PENDING" | "PROCESSING" | "APPROVED" | "REJECTED" | "FAILED";
+export type DeclarationStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "APPROVED"
+  | "REJECTED"
+  | "FAILED"
+  | "COMMUNITY_REVIEW";
 
 export type AuthUser = {
   id: string;

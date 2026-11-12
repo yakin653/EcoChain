@@ -32,16 +32,27 @@ Prérequis : Node.js 20+, npm, Docker Desktop, MetaMask.
 7. Démarrer React : `npm run dev:frontend` (`VITE_API_URL=http://localhost:4001/api`).
 8. Vérifier la santé : `http://localhost:4001/api/health`.
 
+## Documentation académique (grille)
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — conception Blockchain & trade-offs  
+- [`docs/SECURITY.md`](docs/SECURITY.md) — contrôles SC, tests d’attaque, rate-limit  
+- [`docs/JOURNAL_IA.md`](docs/JOURNAL_IA.md) — usage GenAI vérifié  
+- [`docs/SOUTENANCE_QR.md`](docs/SOUTENANCE_QR.md) — fiche Q/R orale  
+- [`docs/DEPLOY_HEDERA_TESTNET.md`](docs/DEPLOY_HEDERA_TESTNET.md) — deploy Testnet 296  
+
 ## Déploiement Hedera Testnet
 
-1. Obtenir un compte de test Hedera et des HBAR de test via le portail officiel Hedera.
-2. Configurer `HEDERA_RPC_URL`, `HEDERA_CHAIN_ID=296` et `BACKEND_OPERATOR_PRIVATE_KEY` dans l'environnement local du backend / Hardhat.
-3. Déployer `EcoToken`, puis `RecyclingRegistry` en lui passant l'adresse du token.
-4. Appeler `EcoToken.setMinter(registryAddress)` une seule fois depuis le propriétaire du token.
-5. Renseigner `TOKEN_CONTRACT_ADDRESS` et `REGISTRY_CONTRACT_ADDRESS` dans `backend/.env`. Vérifier on-chain : `EcoToken.minter()` == adresse du registry, et `RecyclingRegistry.owner()` == compte opérateur backend.
-6. Ajouter le réseau Hedera Testnet dans MetaMask si nécessaire. Le frontend peut lire `balanceOf`; il ne signe pas les récompenses.
+Guide détaillé : [`docs/DEPLOY_HEDERA_TESTNET.md`](docs/DEPLOY_HEDERA_TESTNET.md).
 
-Les scripts de déploiement et tests doivent être exécutés sur Testnet seulement après vérification des adresses et clés. Ce scaffold n'embarque aucune clé ni adresse déployée.
+1. Renseigner `BACKEND_OPERATOR_PRIVATE_KEY` (0x + 64 hex) dans `backend/.env` — jamais dans Git.
+2. Financer l’adresse opérateur via https://portal.hedera.com/faucet (Testnet).
+3. Préflight : `npm run check:hedera` → `operatorReady: true`.
+4. Déployer : `npm run deploy:testnet` (écrit automatiquement `TOKEN_CONTRACT_ADDRESS` + `REGISTRY_CONTRACT_ADDRESS` dans `backend/.env`, configure `setMinter` une seule fois).
+5. Ou en une commande après financement : `npm run wait-fund-deploy`.
+6. Redémarrer le backend → `GET /api/health` doit afficher `chain.readyForMint: true`.
+7. Smoke on-chain : `npm run smoke:reward` (1 ECO + anti-double-paiement).
+
+**Mainnet interdit.** Le frontend lit `balanceOf` ; seul le backend opérateur signe les récompenses.
 
 ## Politique de récompense ECO (backend)
 

@@ -3,6 +3,9 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { declarationKey } from "../helpers/declarationKey";
 
+/** 1000 ECO — aligned with backend REWARD_MAX_ECO_PER_DECLARATION */
+const MAX_REWARD_WEI = ethers.parseEther("1000");
+
 describe("RecyclingRegistry + EcoToken", function () {
   async function deployFixture() {
     const [admin, user, other] = await ethers.getSigners();
@@ -10,7 +13,7 @@ describe("RecyclingRegistry + EcoToken", function () {
     const token = await Token.deploy(admin.address);
     await token.waitForDeployment();
     const Registry = await ethers.getContractFactory("RecyclingRegistry");
-    const registry = await Registry.deploy(await token.getAddress(), admin.address);
+    const registry = await Registry.deploy(await token.getAddress(), admin.address, MAX_REWARD_WEI);
     await registry.waitForDeployment();
     await (await token.setMinter(await registry.getAddress())).wait();
     return { admin, user, other, token, registry };
@@ -114,5 +117,56 @@ describe("RecyclingRegistry + EcoToken", function () {
       "OwnableUnauthorizedAccount"
     );
     expect(await token.minter()).to.equal(ethers.ZeroAddress);
+  });
+
+  it("enforces maxRewardWei cap (attack: oversized mint)", async function () {
+    const { user, registry } = await loadFixture(deployFixture);
+    const id = declarationKey("above-cap");
+    const tooMuch = MAX_REWARD_WEI + 1n;
+    await expect(registry.reward(id, user.address, tooMuch)).to.be.revertedWith("Above max reward");
+    expect(await registry.isProcessed(id)).to.equal(false);
+  });
+
+  it("pause blocks rewards; unpause restores (emergency stop)", async function () {
+    const { admin, user, other, registry } = await loadFixture(deployFixture);
+    const id = declarationKey("while-paused");
+    await expect(registry.connect(other).pause()).to.be.revertedWithCustomError(
+      registry,
+      "OwnableUnauthorizedAccount"
+    );
+    await (await registry.connect(admin).pause()).wait();
+    await expect(registry.reward(id, user.address, ethers.parseEther("1"))).to.be.revertedWithCustomError(
+      registry,
+      "EnforcedPause"
+    );
+    await (await registry.connect(admin).unpause()).wait();
+    await expect(registry.reward(id, user.address, ethers.parseEther("1")))
+      .to.emit(registry, "Rewarded");
+  });
+
+  it("lowerMaxRewardWei can only decrease the cap", async function () {
+    const { admin, other, registry } = await loadFixture(deployFixture);
+    const lower = ethers.parseEther("100");
+    await expect(registry.connect(other).lowerMaxRewardWei(lower)).to.be.revertedWithCustomError(
+      registry,
+      "OwnableUnauthorizedAccount"
+    );
+    await expect(registry.connect(admin).lowerMaxRewardWei(MAX_REWARD_WEI)).to.be.revertedWith(
+      "Can only lower max"
+    );
+    await expect(registry.connect(admin).lowerMaxRewardWei(lower))
+      .to.emit(registry, "MaxRewardUpdated")
+      .withArgs(MAX_REWARD_WEI, lower);
+    expect(await registry.maxRewardWei()).to.equal(lower);
+  });
+
+  it("checks-effects-interactions: failed second call leaves first reward intact", async function () {
+    const { user, other, registry, token } = await loadFixture(deployFixture);
+    const id = declarationKey("cei-double");
+    const amount = ethers.parseEther("5");
+    await registry.reward(id, user.address, amount);
+    await expect(registry.reward(id, other.address, amount)).to.be.revertedWith("Already processed");
+    expect(await token.balanceOf(user.address)).to.equal(amount);
+    expect(await token.balanceOf(other.address)).to.equal(0);
   });
 });

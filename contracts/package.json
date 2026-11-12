@@ -6,7 +6,9 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "check:hedera": "hardhat run scripts/checkHedera.ts --network hederaTestnet",
-    "deploy:testnet": "hardhat run scripts/deploy.ts --network hederaTestnet"
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network hederaTestnet",
+    "wait-fund-deploy": "node scripts/waitFundThenDeploy.mjs",
+    "smoke:reward": "hardhat run scripts/smokeReward.ts --network hederaTestnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

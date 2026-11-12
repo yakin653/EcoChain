@@ -1,7 +1,9 @@
 import "express";
 declare global {
   namespace Express {
-    interface Request { user?: { id: string; role: "USER" | "ADMIN" }; }
+    interface Request {
+      user?: { id: string; role: "USER" | "ADMIN" | "VALIDATOR" };
+    }
   }
 }
 export {};

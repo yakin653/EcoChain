@@ -265,7 +265,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
   if (isAdmin) {
     return (
       <>
-        <section className="panel">
+        <section className="glass">
           <h2>Défi écologique hebdomadaire</h2>
           <p>Créez le planning de 7 jours, définissez les récompenses, validez les soumissions avant tout mint ECO.</p>
           <form className="form inline" onSubmit={onCreateChallenge}>
@@ -281,7 +281,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
           </form>
         </section>
 
-        <section className="panel">
+        <section className="glass">
           <div className="top">
             <h2>Défis créés</h2>
             <button className="ghost" type="button" onClick={() => loadAdmin().catch(handleError)}>
@@ -319,7 +319,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
         </section>
 
         {editId && editTasks.length === 7 && (
-          <section className="panel">
+          <section className="glass">
             <h2>Modifier le défi</h2>
             <p>Ajustez le titre, le bonus et les 7 tâches quotidiennes. Aucun mint n’est déclenché ici.</p>
             <form className="form challenge-edit-form" onSubmit={onSaveEdit}>
@@ -397,7 +397,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
           </section>
         )}
 
-        <section className="panel">
+        <section className="glass">
           <div className="top">
             <div>
               <h2>Soumissions de tâches</h2>
@@ -472,7 +472,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
         </section>
 
         {selectedChallengeId && (
-          <section className="panel">
+          <section className="glass">
             <h2>Progression des utilisateurs</h2>
             {progressRows.length === 0 ? (
               <p>Aucun inscrit sur ce défi.</p>
@@ -533,7 +533,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
 
   return (
     <>
-      <section className="panel challenge-panel">
+      <section className="glass challenge-panel">
         <div className="top">
           <div>
             <h2>Défi écologique hebdomadaire</h2>
@@ -608,7 +608,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
         )}
       </section>
 
-      <section className="panel">
+      <section className="glass">
         <h2>Badges & trophées</h2>
         {badges.length === 0 ? (
           <p>Terminez un défi hebdomadaire validé pour gagner votre premier badge.</p>
@@ -624,7 +624,7 @@ export default function WeeklyChallenge({ token, isAdmin, busy, setBusy, flash, 
         )}
       </section>
 
-      <section className="panel">
+      <section className="glass">
         <h2>Historique des défis</h2>
         {history.length === 0 ? (
           <p>Aucun historique pour le moment.</p>

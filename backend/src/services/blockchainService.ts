@@ -1,4 +1,13 @@
-import { Contract, JsonRpcProvider, Wallet, getAddress, isAddress } from "ethers";
+import {
+  Contract,
+  Interface,
+  JsonRpcProvider,
+  Wallet,
+  getAddress,
+  isAddress,
+  type Log,
+  type TransactionReceipt
+} from "ethers";
 import { env } from "../config/env";
 import { assertChainReadyForMint, getChainReadiness, isOperatorKeyConfigured } from "./chainReadiness";
 
@@ -8,6 +17,10 @@ const registryAbi = [
   "event Rewarded(bytes32 indexed declarationId,address indexed beneficiary,uint256 amount)"
 ];
 const tokenAbi = ["function balanceOf(address account) view returns (uint256)"];
+const registryIface = new Interface(registryAbi);
+
+/** Hashio rejects eth_getLogs spans > 7 days — stay under that window. */
+const LOG_LOOKBACK_BLOCKS = 200_000;
 
 export type RewardedProof = {
   txHash: string;
@@ -20,6 +33,31 @@ export { getChainReadiness, isOperatorKeyConfigured };
 
 function getProvider() {
   return new JsonRpcProvider(env.rpcUrl, env.chainId);
+}
+
+function proofFromRewardedLog(
+  log: Log,
+  expectedDeclarationId?: string
+): RewardedProof | null {
+  try {
+    const parsed = registryIface.parseLog({ topics: log.topics as string[], data: log.data });
+    if (!parsed || parsed.name !== "Rewarded") return null;
+    const declarationId = String(parsed.args.declarationId);
+    if (
+      expectedDeclarationId &&
+      declarationId.toLowerCase() !== expectedDeclarationId.toLowerCase()
+    ) {
+      return null;
+    }
+    return {
+      declarationId,
+      txHash: log.transactionHash,
+      beneficiary: getAddress(String(parsed.args.beneficiary)),
+      amount: BigInt(parsed.args.amount.toString())
+    };
+  } catch {
+    return null;
+  }
 }
 
 function getSigner() {
@@ -69,23 +107,39 @@ export async function getRewardReceipt(txHash: string) {
 }
 
 /**
+ * Parse Rewarded from a known transaction receipt (preferred on Hedera/Hashio).
+ * Read-only — never mints.
+ */
+export async function findRewardedProofInReceipt(
+  txHash: string,
+  declarationId?: string
+): Promise<RewardedProof | null> {
+  const receipt: TransactionReceipt | null = await getRewardReceipt(txHash);
+  if (!receipt || receipt.status !== 1) return null;
+  const registryAddr = env.registryAddress.toLowerCase();
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== registryAddr) continue;
+    const proof = proofFromRewardedLog(log as Log, declarationId);
+    if (proof) return proof;
+  }
+  return null;
+}
+
+/**
  * Look up the on-chain Rewarded event for a declaration key.
+ * Uses a bounded block window (Hashio max ~7 days). Prefer findRewardedProofInReceipt when txHash is known.
  * Read-only — never mints / never submits a transaction.
  */
 export async function findRewardedProof(declarationId: string): Promise<RewardedProof | null> {
-  const registry = getRegistry(getProvider());
+  const provider = getProvider();
+  const registry = getRegistry(provider);
+  const latest = await provider.getBlockNumber();
+  const fromBlock = Math.max(0, latest - LOG_LOOKBACK_BLOCKS);
   const filter = registry.filters.Rewarded(declarationId);
-  const events = await registry.queryFilter(filter);
+  const events = await registry.queryFilter(filter, fromBlock, latest);
   if (!events.length) return null;
   const last = events[events.length - 1]!;
-  const args = (last as { args?: { declarationId?: string; beneficiary?: string; amount?: bigint } }).args;
-  if (!args?.beneficiary || args.amount === undefined) return null;
-  return {
-    declarationId,
-    txHash: last.transactionHash,
-    beneficiary: getAddress(String(args.beneficiary)),
-    amount: BigInt(args.amount.toString())
-  };
+  return proofFromRewardedLog(last as Log, declarationId);
 }
 
 export async function findRewardedTxHash(declarationId: string): Promise<string | null> {

@@ -225,6 +225,7 @@ function createMemoryDeps(seed: {
       requireValidWallet,
       isDeclarationProcessed: async () => state.processed,
       findRewardedProof: async () => defaultProof(),
+      findRewardedProofInReceipt: async () => defaultProof(),
       getRewardReceipt: async () =>
         seed.receiptStatus === null || seed.receiptStatus === undefined
           ? null

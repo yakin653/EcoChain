@@ -2,7 +2,11 @@
   "name": "recycling-blockchain-platform",
   "private": true,
   "version": "1.0.0",
-  "workspaces": ["contracts", "backend", "frontend"],
+  "workspaces": [
+    "contracts",
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "dev:backend": "npm run dev -w backend",
     "dev:frontend": "npm run dev -w frontend",
@@ -12,7 +16,16 @@
     "test:backend": "npm run test -w backend",
     "check:hedera": "npm run check:hedera -w contracts",
     "deploy:testnet": "npm run deploy:testnet -w contracts",
+    "wait-fund-deploy": "npm run wait-fund-deploy -w contracts",
+    "smoke:reward": "npm run smoke:reward -w contracts",
+    "create:hcs-topic": "npm run create:hcs-topic -w backend",
+    "create:tree-collection": "npm run create:tree-collection -w backend",
     "build": "npm run build -w backend && npm run build -w frontend"
   },
-  "devDependencies": { "concurrently": "^9.1.2" }
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@nomicfoundation/solidity-analyzer-win32-x64-msvc": "^0.1.2"
+  }
 }

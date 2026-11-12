@@ -9,12 +9,88 @@ import {
   displayWallet
 } from "./types";
 import { connectMetaMask, formatEcoFromWei, hasMetaMask } from "./wallet";
+import EcoImpact from "./EcoImpact";
+import ImpactJournal from "./ImpactJournal";
+import EcoTree from "./EcoTree";
+import CommunityValidation from "./CommunityValidation";
 import WeeklyChallenge from "./WeeklyChallenge";
 
 type Screen = "login" | "register";
 type AdminFilter = DeclarationStatus;
 
 const MATERIALS = ["Plastique", "Papier", "Verre", "Métal", "Carton", "Aluminium", "Organique", "Électronique"];
+
+type ChainHealth = {
+  readyForMint: boolean;
+  blockers: string[];
+  chainId: number;
+};
+
+function EcoAssistant({
+  token,
+  busy,
+  setBusy,
+  handleError
+}: {
+  token: string;
+  busy: boolean;
+  setBusy: (v: boolean) => void;
+  handleError: (e: unknown) => void;
+}) {
+  const [message, setMessage] = useState("Comment gagner des tokens ECO ?");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [source, setSource] = useState<string | null>(null);
+
+  async function onAsk(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const data = await api<{ answer: string; source?: string; note?: string }>("/assistant", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ message })
+      });
+      setAnswer(data.answer);
+      setSource(data.source || (data.note ? "offline" : "gemini"));
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="glass eco-assistant">
+      <div className="panel-head">
+        <div>
+          <h2>Assistant Eco AI</h2>
+          <p>Pédagogique uniquement — ne valide jamais et ne mint jamais.</p>
+        </div>
+      </div>
+      <form className="form" onSubmit={onAsk}>
+        <label>
+          Votre question
+          <input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={2000}
+            placeholder="Ex. Comment recycler le plastique ?"
+            required
+          />
+        </label>
+        <button type="submit" disabled={busy || !message.trim()}>
+          {busy ? "Réflexion…" : "Envoyer"}
+        </button>
+      </form>
+      {answer && (
+        <div className="assistant-reply">
+          <p>{answer}</p>
+          {source && <small>Source : {source}</small>}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function aiBadgeClass(consistency?: AiConsistency | null) {
   if (consistency === "MATCH") return "ai-match";
@@ -157,6 +233,7 @@ export default function App() {
   const [overrideEco, setOverrideEco] = useState("");
   const [overrideWhy, setOverrideWhy] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [chainHealth, setChainHealth] = useState<ChainHealth | null>(null);
 
   const flash = (text: string, type: "ok" | "err" = "ok") => setFeedback({ text, type });
 
@@ -217,6 +294,12 @@ export default function App() {
     if (!token) return;
     (async () => {
       try {
+        const health = await api<{ chainId: number; chain: ChainHealth }>("/health");
+        setChainHealth({
+          readyForMint: health.chain.readyForMint,
+          blockers: health.chain.blockers || [],
+          chainId: health.chainId
+        });
         const u = await refreshMe(token);
         if (u?.role === "USER") {
           await loadMine(token);
@@ -355,7 +438,7 @@ export default function App() {
 
   async function adminAction(
     id: string,
-    action: "reject" | "validate" | "retry" | "reconcile",
+    action: "reject" | "validate" | "retry" | "reconcile" | "send-to-community",
     body?: object
   ) {
     setBusy(true);
@@ -368,7 +451,9 @@ export default function App() {
       flash(
         action === "validate" || action === "retry" || action === "reconcile"
           ? `Résultat : ${data.status || "OK"}${data.txHash ? ` · tx ${shortTx(data.txHash)}` : ""}`
-          : "Déclaration refusée."
+          : action === "send-to-community"
+            ? "Envoyé en COMMUNITY_REVIEW."
+            : "Déclaration refusée."
       );
       setSelectedId(null);
       setOverrideEco("");
@@ -611,153 +696,137 @@ export default function App() {
 
   const wallet = displayWallet(user);
   const isAdmin = user?.role === "ADMIN";
+  const isValidator = user?.role === "VALIDATOR";
+  const isUser = user?.role === "USER";
 
   return (
-    <main className="shell">
-      <header>
-        <div className="mark">♻</div>
-        <div>
-          <p className="eyebrow">HEDERA TESTNET · CHAIN ID 296</p>
-          <h1>EcoChain</h1>
-          <p className="sub">Plateforme de suivi et de récompense du recyclage</p>
+    <main className="app-shell">
+      <header className="app-topbar">
+        <div className="app-brand">
+          <div className="mark" aria-hidden="true">
+            ♻
+          </div>
+          <div>
+            <p className="eyebrow">HEDERA TESTNET · CHAIN ID 296</p>
+            <h1>EcoChain</h1>
+          </div>
+        </div>
+        <div className="app-top-actions">
+          {isUser && (
+            <div className="wallet-pill" title={wallet || "Aucun wallet"}>
+              <span className="fox" aria-hidden="true">
+                🦊
+              </span>
+              <div>
+                <strong>{formatEcoFromWei(ecoBalance)} ECO</strong>
+                <span>{wallet ? shortAddr(wallet) : "Wallet non lié"}</span>
+              </div>
+            </div>
+          )}
+          <button className="ghost" type="button" onClick={logout}>
+            Déconnexion
+          </button>
         </div>
       </header>
 
-      <section className="notice">
-        <strong>Application de démonstration</strong>
-        <span>
-          Les récompenses ECO ne sont marquées APPROVED qu’après confirmation on-chain. Aucune clé privée n’est
-          stockée dans le navigateur.
-        </span>
-      </section>
+      <div className="app-body">
+        <section className="notice">
+          <strong>
+            {isAdmin
+              ? "Espace administrateur"
+              : isValidator
+                ? "Espace validateur"
+                : `Bienvenue ${displayName(user)}`}{" "}
+            · {user.role}
+          </strong>
+          <span>
+            Les récompenses ECO ne sont marquées APPROVED qu’après confirmation on-chain. Aucune clé privée n’est
+            stockée dans le navigateur.
+          </span>
+          {chainHealth && (
+            <span className={chainHealth.readyForMint ? "chain-badge ok" : "chain-badge warn"}>
+              Hedera {chainHealth.chainId} · mint{" "}
+              {chainHealth.readyForMint ? "READY" : `BLOQUÉ (${chainHealth.blockers.join(", ") || "config"})`}
+            </span>
+          )}
+        </section>
 
-      {feedback && (
-        <p className={`feedback-banner ${feedback.type === "err" ? "err" : "ok"}`} role="status">
-          {feedback.text}
-        </p>
-      )}
+        {feedback && (
+          <p className={`feedback-banner ${feedback.type === "err" ? "err" : "ok"}`} role="status">
+            {feedback.text}
+          </p>
+        )}
 
-      <>
-          <section className="panel top">
-            <div>
-              <h2>{isAdmin ? "Espace administrateur" : "Mon espace"}</h2>
-              <p>
-                {displayName(user)} · rôle <strong>{user.role}</strong>
-                {wallet ? ` · ${shortAddr(wallet)}` : " · aucun wallet associé"}
-              </p>
-            </div>
-            <button className="ghost" type="button" onClick={logout}>
-              Déconnexion
-            </button>
-          </section>
-
-          {!isAdmin && (
-            <>
-              <section className="panel">
-                <div className="top">
+        {isUser && (
+          <>
+            <section className="dash-grid">
+              <article className="glass">
+                <div className="panel-head">
                   <div>
-                    <h2>Portefeuille & solde ECO</h2>
-                    <p>Associez MetaMask (Hedera Testnet 296) pour recevoir les récompenses.</p>
+                    <h2>Portefeuille</h2>
+                    <p>MetaMask · Hedera Testnet 296</p>
                   </div>
-                  <button type="button" onClick={onConnectWallet} disabled={busy || !hasMetaMask()}>
-                    {hasMetaMask() ? (wallet ? "Mettre à jour MetaMask" : "Connecter MetaMask") : "MetaMask requis"}
-                  </button>
                 </div>
                 <div className="stats">
                   <div>
                     <span className="label">Adresse</span>
-                    <strong>{wallet || "Non définie"}</strong>
+                    <strong>{wallet ? shortAddr(wallet) : "—"}</strong>
                   </div>
                   <div>
-                    <span className="label">Solde ECO</span>
+                    <span className="label">Solde</span>
                     <strong>{formatEcoFromWei(ecoBalance)} ECO</strong>
                   </div>
                 </div>
-                <button
-                  className="ghost"
-                  type="button"
-                  disabled={!wallet || busy}
-                  onClick={() => loadBalance(wallet).catch(handleError)}
-                >
-                  Actualiser le solde
-                </button>
-              </section>
+                <div className="day-actions">
+                  <button type="button" onClick={onConnectWallet} disabled={busy || !hasMetaMask()}>
+                    {hasMetaMask()
+                      ? wallet
+                        ? "Mettre à jour MetaMask"
+                        : "Connecter MetaMask"
+                      : "MetaMask requis"}
+                  </button>
+                  <button
+                    className="ghost"
+                    type="button"
+                    disabled={!wallet || busy}
+                    onClick={() => loadBalance(wallet).catch(handleError)}
+                  >
+                    Actualiser le solde
+                  </button>
+                </div>
+              </article>
 
-              <section className="panel">
-                <h2>Nouvelle déclaration</h2>
-                <p>
-                  Photo optionnelle analysée localement (Trash Classifier V2). L&apos;IA n&apos;approuve jamais et ne
-                  distribue aucun token — l&apos;admin décide.
-                </p>
-                <form className="form" onSubmit={onCreateDeclaration}>
-                  <div className="inline">
-                    <label>
-                      Matière
-                      <select value={material} onChange={(e) => setMaterial(e.target.value)}>
-                        {MATERIALS.map((m) => (
-                          <option key={m}>{m}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Quantité (kg)
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.1"
-                        value={quantity}
-                        onChange={(e) => setQuantity(e.target.value)}
-                        required
-                      />
-                    </label>
-                    <button disabled={busy}>{busy ? "Analyse…" : "Envoyer"}</button>
+              <article className="glass eco-orb" aria-label="Solde ECO Token">
+                <div className="eco-orb-content">
+                  <span className="orb-label">ECO TOKEN</span>
+                  <span className="orb-value">{formatEcoFromWei(ecoBalance)}</span>
+                  <span className="orb-meta">Confirmé on-chain · Hedera</span>
+                </div>
+              </article>
+
+              <article className="glass ledger">
+                <div className="panel-head">
+                  <div>
+                    <h2>Ledger recyclage</h2>
+                    <p>Historique HashScan</p>
                   </div>
-                  <label>
-                    Description (optionnel)
-                    <input
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      maxLength={2000}
-                      placeholder="Ex. bouteilles collectées au campus"
-                    />
-                  </label>
-                  <label>
-                    Photo du déchet (JPEG/PNG, max 5 Mo — optionnel)
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png"
-                      onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-                    />
-                  </label>
-                  {photoFile && <small>Fichier sélectionné : {photoFile.name}</small>}
-                </form>
-              </section>
-
-              <section className="panel">
-                <div className="top">
-                  <h2>Mes déclarations</h2>
                   <button className="ghost" type="button" onClick={() => loadMine().catch(handleError)}>
-                    Actualiser
+                    ↻
                   </button>
                 </div>
                 {items.length === 0 ? (
-                  <p>Aucune déclaration pour le moment.</p>
+                  <p className="sub">Aucune déclaration pour le moment.</p>
                 ) : (
                   <div className="list">
-                    {items.map((x) => (
+                    {items.slice(0, 6).map((x) => (
                       <article className="item" key={x.id}>
                         <div>
                           <strong>
                             {x.material} · {x.quantity} kg
                           </strong>
-                          <small>id {x.id.slice(0, 8)}…</small>
-                          {x.estimated_reward_amount && (
-                            <small>Estimé : {formatEcoFromWei(x.estimated_reward_amount)} ECO</small>
-                          )}
-                          {x.reward_amount && <small>Définitif : {formatEcoFromWei(x.reward_amount)} ECO</small>}
+                          {x.reward_amount && <small>{formatEcoFromWei(x.reward_amount)} ECO</small>}
                           {x.tx_hash && (
                             <small>
-                              Tx :{" "}
                               <a
                                 href={`https://hashscan.io/testnet/transaction/${x.tx_hash}`}
                                 target="_blank"
@@ -767,61 +836,198 @@ export default function App() {
                               </a>
                             </small>
                           )}
-                          {x.last_error && <small className="err-text">{x.last_error}</small>}
-                          {x.ai_consistency && (
-                            <small>
-                              IA : <span className={`ai-pill ${aiBadgeClass(x.ai_consistency)}`}>{x.ai_consistency}</span>
-                              {x.ai_detected_material ? ` · détecté ${x.ai_detected_material}` : ""}
-                              {x.ai_confidence != null ? ` · ${formatConfidence(x.ai_confidence)}` : ""}
-                            </small>
-                          )}
                         </div>
                         <span className={`status ${x.status.toLowerCase()}`}>{x.status}</span>
                       </article>
                     ))}
                   </div>
                 )}
-              </section>
+              </article>
+            </section>
 
-              <WeeklyChallenge
-                token={token}
-                isAdmin={false}
-                busy={busy}
-                setBusy={setBusy}
-                flash={flash}
-                handleError={handleError}
-              />
-            </>
-          )}
+            <EcoImpact token={token} mode="user" handleError={handleError} />
+            <EcoTree token={token} handleError={handleError} />
+            <ImpactJournal token={token} isAdmin={false} handleError={handleError} />
 
-          {isAdmin && (
-            <>
-              <section className="panel">
-                <div className="top">
-                  <div>
-                    <h2>File des déclarations</h2>
-                    <p>Valider / refuser / retry / réconcilier — sans mint fictif.</p>
-                  </div>
-                  <div className="admin-tools">
-                    <select
-                      value={adminFilter}
-                      onChange={(e) => {
-                        const v = e.target.value as AdminFilter;
-                        setAdminFilter(v);
-                        loadAdmin(v).catch(handleError);
-                      }}
-                    >
-                      {(["PENDING", "PROCESSING", "APPROVED", "REJECTED", "FAILED"] as AdminFilter[]).map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
+            <section className="glass">
+              <div className="panel-head">
+                <div>
+                  <h2>Déclaration de recyclage</h2>
+                  <p>
+                    Photo optionnelle (Trash Classifier V2). L&apos;IA n&apos;approuve jamais et ne mint jamais.
+                  </p>
+                </div>
+              </div>
+              <div className="material-chips" role="listbox" aria-label="Matières">
+                {MATERIALS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={material === m ? "material-chip active" : "material-chip"}
+                    onClick={() => setMaterial(m)}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <form className="form" onSubmit={onCreateDeclaration}>
+                <div className="inline">
+                  <label>
+                    Matière
+                    <select value={material} onChange={(e) => setMaterial(e.target.value)}>
+                      {MATERIALS.map((m) => (
+                        <option key={m}>{m}</option>
                       ))}
                     </select>
-                    <button className="ghost" type="button" onClick={() => loadAdmin().catch(handleError)}>
-                      Actualiser
-                    </button>
-                  </div>
+                  </label>
+                  <label>
+                    Quantité (kg)
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <button disabled={busy}>{busy ? "Analyse…" : "Envoyer"}</button>
                 </div>
+                <label>
+                  Description (optionnel)
+                  <input
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    maxLength={2000}
+                    placeholder="Ex. bouteilles collectées au campus"
+                  />
+                </label>
+                <label>
+                  Photo du déchet (JPEG/PNG, max 5 Mo — optionnel)
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+                {photoFile && <small className="muted-block">Fichier : {photoFile.name}</small>}
+              </form>
+            </section>
+
+            <section className="glass">
+              <div className="panel-head">
+                <div>
+                  <h2>Mes déclarations</h2>
+                  <p>Statuts et preuves on-chain</p>
+                </div>
+                <button className="ghost" type="button" onClick={() => loadMine().catch(handleError)}>
+                  Actualiser
+                </button>
+              </div>
+              {items.length === 0 ? (
+                <p className="sub">Aucune déclaration pour le moment.</p>
+              ) : (
+                <div className="list">
+                  {items.map((x) => (
+                    <article className="item" key={x.id}>
+                      <div>
+                        <strong>
+                          {x.material} · {x.quantity} kg
+                        </strong>
+                        <small>id {x.id.slice(0, 8)}…</small>
+                        {x.estimated_reward_amount && (
+                          <small>Estimé : {formatEcoFromWei(x.estimated_reward_amount)} ECO</small>
+                        )}
+                        {x.reward_amount && <small>Définitif : {formatEcoFromWei(x.reward_amount)} ECO</small>}
+                        {x.tx_hash && (
+                          <small>
+                            Tx :{" "}
+                            <a
+                              href={`https://hashscan.io/testnet/transaction/${x.tx_hash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {shortTx(x.tx_hash)}
+                            </a>
+                          </small>
+                        )}
+                        {x.last_error && <small className="err-text">{x.last_error}</small>}
+                        {x.ai_consistency && (
+                          <small>
+                            IA : <span className={`ai-pill ${aiBadgeClass(x.ai_consistency)}`}>{x.ai_consistency}</span>
+                            {x.ai_detected_material ? ` · détecté ${x.ai_detected_material}` : ""}
+                            {x.ai_confidence != null ? ` · ${formatConfidence(x.ai_confidence)}` : ""}
+                          </small>
+                        )}
+                      </div>
+                      <span className={`status ${x.status.toLowerCase()}`}>{x.status}</span>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <EcoAssistant token={token} busy={busy} setBusy={setBusy} handleError={handleError} />
+
+            <WeeklyChallenge
+              token={token}
+              isAdmin={false}
+              busy={busy}
+              setBusy={setBusy}
+              flash={flash}
+              handleError={handleError}
+            />
+          </>
+        )}
+
+        {isValidator && token && (
+          <CommunityValidation
+            token={token}
+            handleError={handleError}
+            flash={(m) => flash(m)}
+          />
+        )}
+
+        {isAdmin && (
+          <>
+            <EcoImpact token={token} mode="admin" handleError={handleError} />
+            <ImpactJournal token={token} isAdmin handleError={handleError} />
+
+            <section className="glass">
+              <div className="panel-head">
+                <div>
+                  <h2>File des déclarations</h2>
+                  <p>Valider / refuser / retry / réconcilier — sans mint fictif. Mint réel si READY.</p>
+                </div>
+                <div className="admin-tools">
+                  <select
+                    value={adminFilter}
+                    onChange={(e) => {
+                      const v = e.target.value as AdminFilter;
+                      setAdminFilter(v);
+                      loadAdmin(v).catch(handleError);
+                    }}
+                  >
+                    {(
+                      [
+                        "PENDING",
+                        "COMMUNITY_REVIEW",
+                        "PROCESSING",
+                        "APPROVED",
+                        "REJECTED",
+                        "FAILED"
+                      ] as AdminFilter[]
+                    ).map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="ghost" type="button" onClick={() => loadAdmin().catch(handleError)}>
+                    Actualiser
+                  </button>
+                </div>
+              </div>
 
                 {adminItems.length === 0 ? (
                   <p>Aucune déclaration en statut {adminFilter}.</p>
@@ -889,7 +1095,7 @@ export default function App() {
                         </div>
                         <div className="admin-actions">
                           <span className={`status ${d.status.toLowerCase()}`}>{d.status}</span>
-                          {d.status === "PENDING" && (
+                          {(d.status === "PENDING" || d.status === "COMMUNITY_REVIEW") && (
                             <>
                               <button
                                 type="button"
@@ -916,6 +1122,16 @@ export default function App() {
                               >
                                 Refuser
                               </button>
+                              {d.status === "PENDING" && (
+                                <button
+                                  className="ghost"
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => adminAction(d.id, "send-to-community")}
+                                >
+                                  Envoyer à la communauté
+                                </button>
+                              )}
                               <button
                                 className="ghost"
                                 type="button"
@@ -936,7 +1152,8 @@ export default function App() {
                             </button>
                           )}
                         </div>
-                        {selectedId === d.id && d.status === "PENDING" && (
+                        {selectedId === d.id &&
+                          (d.status === "PENDING" || d.status === "COMMUNITY_REVIEW") && (
                           <div className="override-box">
                             <label>
                               Montant ECO override (optionnel)
@@ -962,19 +1179,21 @@ export default function App() {
                 )}
               </section>
 
-              <WeeklyChallenge
-                token={token}
-                isAdmin
-                busy={busy}
-                setBusy={setBusy}
-                flash={flash}
-                handleError={handleError}
-              />
-            </>
-          )}
-      </>
+            <EcoAssistant token={token} busy={busy} setBusy={setBusy} handleError={handleError} />
 
-      <footer>Projet académique Fatimetou & Yakin</footer>
+            <WeeklyChallenge
+              token={token}
+              isAdmin
+              busy={busy}
+              setBusy={setBusy}
+              flash={flash}
+              handleError={handleError}
+            />
+          </>
+        )}
+
+        <footer className="app-footer">Projet académique Fatimetou &amp; Yakin</footer>
+      </div>
     </main>
   );
 }

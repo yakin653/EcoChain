@@ -1,11 +1,13 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 DO $$ BEGIN
-  CREATE TYPE user_role AS ENUM ('USER', 'ADMIN');
+  CREATE TYPE user_role AS ENUM ('USER', 'ADMIN', 'VALIDATOR');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TYPE declaration_status AS ENUM ('PENDING', 'PROCESSING', 'APPROVED', 'REJECTED', 'FAILED');
+  CREATE TYPE declaration_status AS ENUM (
+    'PENDING', 'PROCESSING', 'APPROVED', 'REJECTED', 'FAILED', 'COMMUNITY_REVIEW'
+  );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -200,3 +202,93 @@ CREATE TABLE IF NOT EXISTS user_badges (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id, earned_at DESC);
+
+-- ─── HCS anchors (Feature A) ────────────────────────────────────────────────
+
+DO $$ BEGIN
+  CREATE TYPE anchor_type AS ENUM ('IMPACT_WEEKLY', 'DECLARATION_PROOF');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE anchor_status AS ENUM ('pending', 'submitted', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS anchors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type anchor_type NOT NULL,
+  ref VARCHAR(200) NOT NULL,
+  hash CHAR(64) NOT NULL,
+  topic_id VARCHAR(40),
+  sequence_number BIGINT,
+  consensus_timestamp VARCHAR(40),
+  status anchor_status NOT NULL DEFAULT 'pending',
+  last_error TEXT,
+  payload_json JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_anchors_type_created ON anchors(type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_anchors_ref ON anchors(ref);
+CREATE INDEX IF NOT EXISTS idx_anchors_status ON anchors(status);
+
+-- ─── EcoTree NFT (Feature B) ────────────────────────────────────────────────
+
+DO $$ BEGIN
+  CREATE TYPE tree_sync_status AS ENUM ('ok', 'pending', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS trees (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  token_id VARCHAR(40) NOT NULL,
+  serial BIGINT NOT NULL,
+  level VARCHAR(20) NOT NULL DEFAULT 'seed',
+  last_co2_kg NUMERIC(14,3) NOT NULL DEFAULT 0,
+  metadata_uri TEXT,
+  sync_status tree_sync_status NOT NULL DEFAULT 'pending',
+  last_error TEXT,
+  claimed_at TIMESTAMPTZ,
+  claimed_wallet VARCHAR(42),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT trees_token_serial UNIQUE (token_id, serial)
+);
+
+CREATE TABLE IF NOT EXISTS tree_level_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tree_id UUID NOT NULL REFERENCES trees(id) ON DELETE CASCADE,
+  from_level VARCHAR(20),
+  to_level VARCHAR(20) NOT NULL,
+  co2_kg NUMERIC(14,3) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tree_level_history_tree ON tree_level_history(tree_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trees_serial ON trees(serial);
+
+-- ─── Community validation (Feature C) ───────────────────────────────────────
+
+DO $$ BEGIN
+  CREATE TYPE vote_decision AS ENUM ('APPROVE', 'REJECT');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS votes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  declaration_id UUID NOT NULL REFERENCES declarations(id) ON DELETE CASCADE,
+  validator_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  decision vote_decision NOT NULL,
+  comment TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT votes_unique_validator UNIQUE (declaration_id, validator_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_votes_declaration ON votes(declaration_id, created_at);
+
+CREATE TABLE IF NOT EXISTS validator_stats (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL DEFAULT 0,
+  votes_cast INTEGER NOT NULL DEFAULT 0,
+  votes_correct INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

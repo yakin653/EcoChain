@@ -18,6 +18,7 @@ import {
   sha256Buffer,
   type AiAnalysisResult
 } from "../services/aiWasteService";
+import { sendToCommunity, shouldOpenCommunityReview } from "../services/validationService";
 
 const router = Router();
 router.use(authenticate);
@@ -125,15 +126,19 @@ router.post("/", requireRole("USER"), (req, res, next) => {
           await writeFile(abs, req.file.buffer);
           photoPath = filename;
 
-          // Assistive AI only — never changes status away from PENDING, never mints.
+          // Assistive AI — never mints. Uncertain results open COMMUNITY_REVIEW (not auto-approve).
           aiAnalysis = await analyzeWastePhoto(req.file.buffer, input.material, filename);
         }
+
+        const initialStatus = shouldOpenCommunityReview(aiAnalysis?.consistency)
+          ? "COMMUNITY_REVIEW"
+          : "PENDING";
 
         const result = await pool.query(
           `INSERT INTO declarations(
              id, user_id, material, quantity, description, wallet_address, declaration_key,
-             estimated_reward_amount, reward_amount, photo_path, photo_sha256
-           ) VALUES ($1,$2,$3,$4::numeric,$5,$6,$7,$8,NULL,$9,$10)
+             estimated_reward_amount, reward_amount, photo_path, photo_sha256, status
+           ) VALUES ($1,$2,$3,$4::numeric,$5,$6,$7,$8,NULL,$9,$10,$11::declaration_status)
            RETURNING *`,
           [
             uuid,
@@ -145,7 +150,8 @@ router.post("/", requireRole("USER"), (req, res, next) => {
             key,
             estimated.rewardWei.toString(),
             photoPath,
-            photoSha
+            photoSha,
+            initialStatus
           ]
         );
 
@@ -161,7 +167,7 @@ router.post("/", requireRole("USER"), (req, res, next) => {
           rate_eco_per_kg: estimated.rateEcoPerKg,
           ai_analysis: aiAnalysis,
           note:
-            "estimated_reward_amount est informatif; reward_amount définitif est calculé uniquement à la validation ADMIN. L'IA n'approuve jamais et ne mint jamais."
+            "estimated_reward_amount est informatif; reward_amount définitif à la validation. L'IA n'approuve jamais et ne mint jamais. MISMATCH/UNCERTAIN/DEGRADED → COMMUNITY_REVIEW."
         });
       } catch (e) {
         next(e);
@@ -221,8 +227,8 @@ router.get("/admin/list", requireRole("ADMIN"), async (req, res, next) => {
   }
 });
 
-/** Stream declaration photo to ADMIN only (never public). */
-router.get("/admin/:id/photo", requireRole("ADMIN"), async (req, res, next) => {
+/** Stream declaration photo to ADMIN / VALIDATOR only (never public). */
+router.get("/admin/:id/photo", requireRole("ADMIN", "VALIDATOR"), async (req, res, next) => {
   try {
     const r = await pool.query(`SELECT photo_path FROM declarations WHERE id=$1`, [String(req.params.id)]);
     const photoPath = r.rows[0]?.photo_path as string | null;
@@ -243,13 +249,23 @@ router.post("/admin/:id/reject", requireRole("ADMIN"), async (req, res, next) =>
   try {
     const r = await pool.query(
       `UPDATE declarations SET status='REJECTED', updated_at=NOW()
-       WHERE id=$1 AND status='PENDING' RETURNING *`,
+       WHERE id=$1 AND status IN ('PENDING','COMMUNITY_REVIEW') RETURNING *`,
       [String(req.params.id)]
     );
     if (!r.rowCount) {
-      return res.status(409).json({ message: "Seules les déclarations PENDING peuvent être refusées" });
+      return res.status(409).json({
+        message: "Seules les déclarations PENDING ou COMMUNITY_REVIEW peuvent être refusées"
+      });
     }
     res.json(r.rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/admin/:id/send-to-community", requireRole("ADMIN"), async (req, res, next) => {
+  try {
+    res.json({ declaration: await sendToCommunity(String(req.params.id)) });
   } catch (e) {
     next(e);
   }
@@ -267,12 +283,19 @@ router.post("/admin/:id/validate", requireRole("ADMIN"), async (req, res, next) 
     if (body.amountEco !== undefined && !body.justification) {
       return res.status(400).json({ message: "Justification obligatoire pour un override de montant" });
     }
-    // Unchanged mint path — AI never short-circuits this.
+    const cur = await pool.query(`SELECT status FROM declarations WHERE id=$1`, [declarationId]);
+    if (!cur.rowCount) return res.status(404).json({ message: "Déclaration introuvable" });
+    const status = cur.rows[0].status as string;
+    if (status !== "PENDING" && status !== "COMMUNITY_REVIEW") {
+      return res.status(409).json({ message: `Validation refusée depuis le statut ${status}` });
+    }
+    // Same mint path (triple proof). Admin may bypass community queue.
     res.json(
       await processReward(declarationId, false, {
         amountEco: body.amountEco,
         justification: body.justification,
-        adminUserId: req.user!.id
+        adminUserId: req.user!.id,
+        fromStatus: status as "PENDING" | "COMMUNITY_REVIEW"
       })
     );
   } catch (e: any) {

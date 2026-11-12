@@ -27,5 +27,15 @@ export const env = {
   aiServiceUrl: (process.env.AI_SERVICE_URL || "http://127.0.0.1:5001").replace(/\/$/, ""),
   aiTimeoutMs: Number(process.env.AI_TIMEOUT_MS || 60000),
   aiMaxUploadBytes: Number(process.env.AI_MAX_UPLOAD_BYTES || 5 * 1024 * 1024),
-  uploadsDir: process.env.UPLOADS_DIR || ""
+  uploadsDir: process.env.UPLOADS_DIR || "",
+  /** Hedera native account id (0.0.x) for HCS / HTS */
+  operatorAccountId: process.env.OPERATOR_ACCOUNT_ID || "",
+  hcsTopicId: process.env.HCS_TOPIC_ID || "",
+  hederaMirrorNodeUrl: process.env.HEDERA_MIRROR_NODE_URL || "https://testnet.mirrornode.hedera.com",
+  treeTokenId: process.env.TREE_TOKEN_ID || "",
+  /** Public base URL used in NFT metadata pointers */
+  publicApiBaseUrl: (process.env.PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 4001}`).replace(
+    /\/$/,
+    ""
+  )
 };

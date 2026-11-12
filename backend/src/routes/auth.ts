@@ -5,9 +5,13 @@ import { z } from "zod";
 import { pool } from "../db/pool";
 import { env } from "../config/env";
 import { authenticate } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { requireValidWallet } from "../services/blockchainService";
 
 const router = Router();
+
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyPrefix: "auth" });
+router.use(authLimiter);
 
 const registerSchema = z.object({
   fullName: z.string().min(2).max(120),

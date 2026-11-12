@@ -10,6 +10,8 @@ export type ProcessRewardOptions = {
   amountEco?: string;
   justification?: string;
   adminUserId?: string;
+  /** Claim source status (community 2/3 uses COMMUNITY_REVIEW). */
+  fromStatus?: "PENDING" | "COMMUNITY_REVIEW";
 };
 
 type DeclarationRow = {
@@ -33,6 +35,10 @@ export type RewardBlockchain = {
   ) => Promise<{ txHash: string; wait: () => Promise<{ status: number | null } | null> }>;
   getRewardReceipt: (txHash: string) => Promise<{ status: number | null } | null>;
   findRewardedProof: (declarationId: string) => Promise<RewardedProof | null>;
+  findRewardedProofInReceipt: (
+    txHash: string,
+    declarationId?: string
+  ) => Promise<RewardedProof | null>;
   requireValidWallet: (wallet: string) => string;
 };
 
@@ -48,6 +54,7 @@ const defaultDeps: RewardDeps = {
     submitReward: blockchain.submitReward,
     getRewardReceipt: blockchain.getRewardReceipt,
     findRewardedProof: blockchain.findRewardedProof,
+    findRewardedProofInReceipt: blockchain.findRewardedProofInReceipt,
     requireValidWallet: blockchain.requireValidWallet
   }
 };
@@ -106,7 +113,17 @@ export async function collectRewardProof(
     return { ok: false, reason: "Preuve incomplète: isProcessed=false on-chain" };
   }
 
-  const eventProof = await deps.chain.findRewardedProof(params.declarationKey);
+  // Prefer receipt logs when we already have a tx hash (Hashio rejects unbounded eth_getLogs).
+  let eventProof: RewardedProof | null = null;
+  if (params.hintTxHash) {
+    eventProof = await deps.chain.findRewardedProofInReceipt(
+      params.hintTxHash,
+      params.declarationKey
+    );
+  }
+  if (!eventProof) {
+    eventProof = await deps.chain.findRewardedProof(params.declarationKey);
+  }
   if (!eventProof) {
     return {
       ok: false,
@@ -218,6 +235,23 @@ async function markApproved(
   } finally {
     client.release();
   }
+
+  // Side-effects after mint proof — never block / reverse APPROVED
+  void import("./hcsService")
+    .then((hcs) => hcs.enqueueDeclarationProof(params.declarationId, { pool: deps.pool as any }))
+    .catch((err) => console.warn("[hcs] post-APPROVED hook:", err?.message || err));
+
+  void deps.pool
+    .query(`SELECT user_id FROM declarations WHERE id=$1`, [params.declarationId])
+    .then((r: any) => {
+      const userId = r.rows?.[0]?.user_id as string | undefined;
+      if (!userId) return;
+      return import("./treeService").then((tree) =>
+        tree.onDeclarationApproved(userId, { pool: deps.pool as any })
+      );
+    })
+    .catch((err) => console.warn("[tree] post-APPROVED hook:", err?.message || err));
+
   return { status: "APPROVED", txHash, reconciled: true };
 }
 
@@ -249,7 +283,7 @@ export async function processReward(
   options: ProcessRewardOptions = {},
   deps: RewardDeps = defaultDeps
 ) {
-  const allowed = retry ? "FAILED" : "PENDING";
+  const allowed = retry ? "FAILED" : options.fromStatus || "PENDING";
   const claim = await deps.pool.query(
     `UPDATE declarations SET status='PROCESSING', last_error=NULL, updated_at=NOW()
      WHERE id=$1 AND status=$2

@@ -16,6 +16,7 @@ const defaultDeps: ChallengeRewardDeps = {
     submitReward: blockchain.submitReward,
     getRewardReceipt: blockchain.getRewardReceipt,
     findRewardedProof: blockchain.findRewardedProof,
+    findRewardedProofInReceipt: blockchain.findRewardedProofInReceipt,
     requireValidWallet: blockchain.requireValidWallet
   }
 };

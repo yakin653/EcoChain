@@ -28,15 +28,25 @@ export interface RecyclingRegistryInterface extends Interface {
     nameOrSignature:
       | "ecoToken"
       | "isProcessed"
+      | "lowerMaxRewardWei"
+      | "maxRewardWei"
       | "owner"
+      | "pause"
+      | "paused"
       | "processedDeclarations"
       | "renounceOwnership"
       | "reward"
       | "transferOwnership"
+      | "unpause"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "OwnershipTransferred" | "Rewarded"
+    nameOrSignatureOrTopic:
+      | "MaxRewardUpdated"
+      | "OwnershipTransferred"
+      | "Paused"
+      | "Rewarded"
+      | "Unpaused"
   ): EventFragment;
 
   encodeFunctionData(functionFragment: "ecoToken", values?: undefined): string;
@@ -44,7 +54,17 @@ export interface RecyclingRegistryInterface extends Interface {
     functionFragment: "isProcessed",
     values: [BytesLike]
   ): string;
+  encodeFunctionData(
+    functionFragment: "lowerMaxRewardWei",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "maxRewardWei",
+    values?: undefined
+  ): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
+  encodeFunctionData(functionFragment: "pause", values?: undefined): string;
+  encodeFunctionData(functionFragment: "paused", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "processedDeclarations",
     values: [BytesLike]
@@ -61,13 +81,24 @@ export interface RecyclingRegistryInterface extends Interface {
     functionFragment: "transferOwnership",
     values: [AddressLike]
   ): string;
+  encodeFunctionData(functionFragment: "unpause", values?: undefined): string;
 
   decodeFunctionResult(functionFragment: "ecoToken", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "isProcessed",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(
+    functionFragment: "lowerMaxRewardWei",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "maxRewardWei",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "pause", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "paused", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "processedDeclarations",
     data: BytesLike
@@ -81,6 +112,20 @@ export interface RecyclingRegistryInterface extends Interface {
     functionFragment: "transferOwnership",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "unpause", data: BytesLike): Result;
+}
+
+export namespace MaxRewardUpdatedEvent {
+  export type InputTuple = [previousMax: BigNumberish, newMax: BigNumberish];
+  export type OutputTuple = [previousMax: bigint, newMax: bigint];
+  export interface OutputObject {
+    previousMax: bigint;
+    newMax: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace OwnershipTransferredEvent {
@@ -89,6 +134,18 @@ export namespace OwnershipTransferredEvent {
   export interface OutputObject {
     previousOwner: string;
     newOwner: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PausedEvent {
+  export type InputTuple = [account: AddressLike];
+  export type OutputTuple = [account: string];
+  export interface OutputObject {
+    account: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -111,6 +168,18 @@ export namespace RewardedEvent {
     declarationId: string;
     beneficiary: string;
     amount: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace UnpausedEvent {
+  export type InputTuple = [account: AddressLike];
+  export type OutputTuple = [account: string];
+  export interface OutputObject {
+    account: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -169,7 +238,19 @@ export interface RecyclingRegistry extends BaseContract {
     "view"
   >;
 
+  lowerMaxRewardWei: TypedContractMethod<
+    [newMax: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  maxRewardWei: TypedContractMethod<[], [bigint], "view">;
+
   owner: TypedContractMethod<[], [string], "view">;
+
+  pause: TypedContractMethod<[], [void], "nonpayable">;
+
+  paused: TypedContractMethod<[], [boolean], "view">;
 
   processedDeclarations: TypedContractMethod<
     [arg0: BytesLike],
@@ -191,6 +272,8 @@ export interface RecyclingRegistry extends BaseContract {
     "nonpayable"
   >;
 
+  unpause: TypedContractMethod<[], [void], "nonpayable">;
+
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -202,8 +285,20 @@ export interface RecyclingRegistry extends BaseContract {
     nameOrSignature: "isProcessed"
   ): TypedContractMethod<[declarationId: BytesLike], [boolean], "view">;
   getFunction(
+    nameOrSignature: "lowerMaxRewardWei"
+  ): TypedContractMethod<[newMax: BigNumberish], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "maxRewardWei"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "pause"
+  ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "paused"
+  ): TypedContractMethod<[], [boolean], "view">;
   getFunction(
     nameOrSignature: "processedDeclarations"
   ): TypedContractMethod<[arg0: BytesLike], [boolean], "view">;
@@ -220,7 +315,17 @@ export interface RecyclingRegistry extends BaseContract {
   getFunction(
     nameOrSignature: "transferOwnership"
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "unpause"
+  ): TypedContractMethod<[], [void], "nonpayable">;
 
+  getEvent(
+    key: "MaxRewardUpdated"
+  ): TypedContractEvent<
+    MaxRewardUpdatedEvent.InputTuple,
+    MaxRewardUpdatedEvent.OutputTuple,
+    MaxRewardUpdatedEvent.OutputObject
+  >;
   getEvent(
     key: "OwnershipTransferred"
   ): TypedContractEvent<
@@ -229,14 +334,39 @@ export interface RecyclingRegistry extends BaseContract {
     OwnershipTransferredEvent.OutputObject
   >;
   getEvent(
+    key: "Paused"
+  ): TypedContractEvent<
+    PausedEvent.InputTuple,
+    PausedEvent.OutputTuple,
+    PausedEvent.OutputObject
+  >;
+  getEvent(
     key: "Rewarded"
   ): TypedContractEvent<
     RewardedEvent.InputTuple,
     RewardedEvent.OutputTuple,
     RewardedEvent.OutputObject
   >;
+  getEvent(
+    key: "Unpaused"
+  ): TypedContractEvent<
+    UnpausedEvent.InputTuple,
+    UnpausedEvent.OutputTuple,
+    UnpausedEvent.OutputObject
+  >;
 
   filters: {
+    "MaxRewardUpdated(uint256,uint256)": TypedContractEvent<
+      MaxRewardUpdatedEvent.InputTuple,
+      MaxRewardUpdatedEvent.OutputTuple,
+      MaxRewardUpdatedEvent.OutputObject
+    >;
+    MaxRewardUpdated: TypedContractEvent<
+      MaxRewardUpdatedEvent.InputTuple,
+      MaxRewardUpdatedEvent.OutputTuple,
+      MaxRewardUpdatedEvent.OutputObject
+    >;
+
     "OwnershipTransferred(address,address)": TypedContractEvent<
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,
@@ -248,6 +378,17 @@ export interface RecyclingRegistry extends BaseContract {
       OwnershipTransferredEvent.OutputObject
     >;
 
+    "Paused(address)": TypedContractEvent<
+      PausedEvent.InputTuple,
+      PausedEvent.OutputTuple,
+      PausedEvent.OutputObject
+    >;
+    Paused: TypedContractEvent<
+      PausedEvent.InputTuple,
+      PausedEvent.OutputTuple,
+      PausedEvent.OutputObject
+    >;
+
     "Rewarded(bytes32,address,uint256)": TypedContractEvent<
       RewardedEvent.InputTuple,
       RewardedEvent.OutputTuple,
@@ -257,6 +398,17 @@ export interface RecyclingRegistry extends BaseContract {
       RewardedEvent.InputTuple,
       RewardedEvent.OutputTuple,
       RewardedEvent.OutputObject
+    >;
+
+    "Unpaused(address)": TypedContractEvent<
+      UnpausedEvent.InputTuple,
+      UnpausedEvent.OutputTuple,
+      UnpausedEvent.OutputObject
+    >;
+    Unpaused: TypedContractEvent<
+      UnpausedEvent.InputTuple,
+      UnpausedEvent.OutputTuple,
+      UnpausedEvent.OutputObject
     >;
   };
 }
