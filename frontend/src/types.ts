@@ -12,6 +12,8 @@ export type AuthUser = {
   wallet_address?: string | null;
 };
 
+export type AiConsistency = "MATCH" | "MISMATCH" | "UNCERTAIN" | "DEGRADED";
+
 export type Declaration = {
   id: string;
   material: string;
@@ -28,6 +30,17 @@ export type Declaration = {
   full_name?: string;
   email?: string;
   user_wallet_address?: string | null;
+  photo_path?: string | null;
+  photo_sha256?: string | null;
+  ai_detected_material?: string | null;
+  ai_declared_material_key?: string | null;
+  ai_confidence?: string | number | null;
+  ai_consistency?: AiConsistency | null;
+  ai_explanation?: string | null;
+  ai_admin_review_required?: boolean | null;
+  ai_all_scores?: Record<string, number> | null;
+  ai_detected_objects?: Array<{ label: string; ecochain_material: string; confidence: number }> | null;
+  ai_model?: string | null;
 };
 
 export function displayName(user: AuthUser | null | undefined): string {

@@ -1,7 +1,8 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, API } from "./api";
 import {
   AuthUser,
+  AiConsistency,
   Declaration,
   DeclarationStatus,
   displayName,
@@ -14,6 +15,21 @@ type Screen = "login" | "register";
 type AdminFilter = DeclarationStatus;
 
 const MATERIALS = ["Plastique", "Papier", "Verre", "Métal", "Carton", "Aluminium", "Organique", "Électronique"];
+
+function aiBadgeClass(consistency?: AiConsistency | null) {
+  if (consistency === "MATCH") return "ai-match";
+  if (consistency === "MISMATCH") return "ai-mismatch";
+  if (consistency === "UNCERTAIN") return "ai-uncertain";
+  if (consistency === "DEGRADED") return "ai-degraded";
+  return "";
+}
+
+function formatConfidence(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") return "—";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return `${(n * 100).toFixed(1)} %`;
+}
 
 function shortAddr(addr?: string | null) {
   if (!addr) return "—";
@@ -132,6 +148,7 @@ export default function App() {
   const [material, setMaterial] = useState("Plastique");
   const [quantity, setQuantity] = useState("1");
   const [description, setDescription] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [ecoBalance, setEcoBalance] = useState<string | null>(null);
 
   // Admin
@@ -284,17 +301,30 @@ export default function App() {
     e.preventDefault();
     setBusy(true);
     try {
-      await api("/declarations", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          material,
-          quantity: Number(quantity),
-          description: description || undefined
-        })
-      });
-      flash("Déclaration créée (PENDING).");
+      const form = new FormData();
+      form.append("material", material);
+      form.append("quantity", quantity);
+      if (description.trim()) form.append("description", description.trim());
+      if (photoFile) form.append("photo", photoFile);
+
+      const created = await api<{ ai_analysis?: { consistency?: string; detected_material?: string; confidence?: number } }>(
+        "/declarations",
+        { method: "POST", token, body: form }
+      );
+
+      if (created.ai_analysis?.consistency) {
+        flash(
+          `Déclaration PENDING · IA ${created.ai_analysis.consistency}` +
+            (created.ai_analysis.detected_material
+              ? ` (${created.ai_analysis.detected_material}, ${formatConfidence(created.ai_analysis.confidence)})`
+              : "") +
+            " — validation admin obligatoire."
+        );
+      } else {
+        flash("Déclaration créée (PENDING).");
+      }
       setDescription("");
+      setPhotoFile(null);
       await loadMine();
     } catch (err) {
       handleError(err);
@@ -655,6 +685,10 @@ export default function App() {
 
               <section className="panel">
                 <h2>Nouvelle déclaration</h2>
+                <p>
+                  Photo optionnelle analysée localement (Trash Classifier V2). L&apos;IA n&apos;approuve jamais et ne
+                  distribue aucun token — l&apos;admin décide.
+                </p>
                 <form className="form" onSubmit={onCreateDeclaration}>
                   <div className="inline">
                     <label>
@@ -676,7 +710,7 @@ export default function App() {
                         required
                       />
                     </label>
-                    <button disabled={busy}>Envoyer</button>
+                    <button disabled={busy}>{busy ? "Analyse…" : "Envoyer"}</button>
                   </div>
                   <label>
                     Description (optionnel)
@@ -687,6 +721,15 @@ export default function App() {
                       placeholder="Ex. bouteilles collectées au campus"
                     />
                   </label>
+                  <label>
+                    Photo du déchet (JPEG/PNG, max 5 Mo — optionnel)
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  {photoFile && <small>Fichier sélectionné : {photoFile.name}</small>}
                 </form>
               </section>
 
@@ -725,6 +768,13 @@ export default function App() {
                             </small>
                           )}
                           {x.last_error && <small className="err-text">{x.last_error}</small>}
+                          {x.ai_consistency && (
+                            <small>
+                              IA : <span className={`ai-pill ${aiBadgeClass(x.ai_consistency)}`}>{x.ai_consistency}</span>
+                              {x.ai_detected_material ? ` · détecté ${x.ai_detected_material}` : ""}
+                              {x.ai_confidence != null ? ` · ${formatConfidence(x.ai_confidence)}` : ""}
+                            </small>
+                          )}
                         </div>
                         <span className={`status ${x.status.toLowerCase()}`}>{x.status}</span>
                       </article>
@@ -793,6 +843,49 @@ export default function App() {
                           {d.reward_amount && <small>Définitif : {formatEcoFromWei(d.reward_amount)} ECO</small>}
                           {d.tx_hash && <small>Tx : {shortTx(d.tx_hash)}</small>}
                           {d.last_error && <small className="err-text">{d.last_error}</small>}
+                          {d.ai_consistency ? (
+                            <div className={`ai-admin-box ${aiBadgeClass(d.ai_consistency)}`}>
+                              <strong>
+                                Analyse IA ·{" "}
+                                <span className={`ai-pill ${aiBadgeClass(d.ai_consistency)}`}>{d.ai_consistency}</span>
+                              </strong>
+                              <small>
+                                Déclaré : {d.material}
+                                {d.ai_declared_material_key ? ` (${d.ai_declared_material_key})` : ""} · Détecté :{" "}
+                                {d.ai_detected_material || "—"} · Confiance : {formatConfidence(d.ai_confidence)}
+                              </small>
+                              {d.ai_explanation && <small>{d.ai_explanation}</small>}
+                              <small className="err-text">
+                                Aide à la décision uniquement — validation humaine obligatoire. L&apos;IA ne mint jamais.
+                              </small>
+                              {d.photo_path && (
+                                <a
+                                  href={`${API}/declarations/admin/${d.id}/photo`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    void (async () => {
+                                      try {
+                                        const res = await fetch(`${API}/declarations/admin/${d.id}/photo`, {
+                                          headers: { Authorization: `Bearer ${token}` }
+                                        });
+                                        if (!res.ok) throw new Error("Photo indisponible");
+                                        const blob = await res.blob();
+                                        window.open(URL.createObjectURL(blob), "_blank");
+                                      } catch (err) {
+                                        handleError(err);
+                                      }
+                                    })();
+                                  }}
+                                >
+                                  Voir la photo
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <small>Pas d&apos;analyse IA (déclaration sans photo).</small>
+                          )}
                         </div>
                         <div className="admin-actions">
                           <span className={`status ${d.status.toLowerCase()}`}>{d.status}</span>
@@ -813,7 +906,7 @@ export default function App() {
                                   adminAction(d.id, "validate", Object.keys(body).length ? body : undefined);
                                 }}
                               >
-                                Valider
+                                Valider (humain)
                               </button>
                               <button
                                 className="ghost danger"

@@ -77,6 +77,25 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 footer { text-align: center; color: #829087; font-size: 12px; margin-top: 40px; }
 
+/* AI waste recognition badges (admin assistive panel) */
+.ai-pill {
+  display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 4px 8px; border-radius: 999px; vertical-align: middle;
+}
+.ai-pill.ai-match, .ai-match { background: #ddf5e5; color: #167444; }
+.ai-pill.ai-mismatch, .ai-mismatch { background: #fde8e5; color: #a63d31; }
+.ai-pill.ai-uncertain, .ai-uncertain { background: #fff1d7; color: #93620c; }
+.ai-pill.ai-degraded, .ai-degraded { background: #edf1ee; color: #5a6a60; }
+.ai-admin-box {
+  margin-top: 10px; padding: 12px; border-radius: 12px; border: 1px solid #e2ebe5;
+  background: #f7faf8; display: grid; gap: 6px; max-width: 520px;
+}
+.ai-admin-box.ai-match { border-color: #c8e8d4; background: #f0faf4; }
+.ai-admin-box.ai-mismatch { border-color: #f0cfc9; background: #fff6f5; }
+.ai-admin-box.ai-uncertain { border-color: #f0dfb4; background: #fffaf0; }
+.ai-admin-box.ai-degraded { border-color: #d7ded9; background: #f4f6f5; }
+.ai-admin-box a { font-weight: 700; }
+
 /* ── Auth page — premium Eco-Tech split screen ─────────────────────────── */
 .auth-page {
   --eco-950: #052e1b;
