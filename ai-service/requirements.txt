@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pillow==11.1.0
+huggingface_hub==0.27.1
+fastai==2.8.8
+torch
+torchvision
+pydantic==2.10.5
